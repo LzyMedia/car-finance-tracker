@@ -44,6 +44,7 @@ export interface Deal {
   url: string;
   source: string;
   imageUrl?: string;
+  description?: string;
   inStock: boolean;
   lastUpdated: string;
 }
