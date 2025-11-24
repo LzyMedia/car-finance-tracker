@@ -441,19 +441,27 @@ function DealCard({ deal }: DealCardProps) {
 
           {/* Price */}
           <div className="mb-4">
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-foreground">
-                ${deal.price.toLocaleString()}
-              </span>
-              {deal.originalPrice && deal.originalPrice > deal.price && (
-                <span className="text-lg text-muted line-through">
-                  ${deal.originalPrice.toLocaleString()}
-                </span>
-              )}
-            </div>
-            {discount > 0 && (
-              <span className="text-sm text-jdm-cyan font-semibold">
-                Save {discount.toFixed(0)}%
+            {deal.price > 0 ? (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold text-foreground">
+                    ${deal.price.toLocaleString()}
+                  </span>
+                  {deal.originalPrice && deal.originalPrice > deal.price && (
+                    <span className="text-lg text-muted line-through">
+                      ${deal.originalPrice.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {discount > 0 && (
+                  <span className="text-sm text-jdm-cyan font-semibold">
+                    Save {discount.toFixed(0)}%
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-lg font-semibold text-jdm-purple">
+                View Search Results
               </span>
             )}
           </div>
