@@ -1,217 +1,331 @@
-// Web scraping utilities for car listings and parts
+// Web scraping utilities for car listings and parts using headless browser
 import { Deal } from '@/types';
 import { generateId } from './storage';
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+import { chromium, Browser, Page } from 'playwright-core';
+
+// Browser instance for reuse
+let browserInstance: Browser | null = null;
 
 /**
- * Scrape visor.vin for car listings
+ * Get or create a browser instance
+ */
+async function getBrowser(): Promise<Browser> {
+  if (browserInstance && browserInstance.isConnected()) {
+    return browserInstance;
+  }
+
+  try {
+    // Try to use @sparticuz/chromium for production (Vercel)
+    const chromiumPkg = await import('@sparticuz/chromium');
+    const executablePath = await chromiumPkg.default.executablePath();
+
+    browserInstance = await chromium.launch({
+      args: chromiumPkg.default.args,
+      executablePath: executablePath,
+      headless: true,
+    });
+    console.log('Using @sparticuz/chromium for production');
+  } catch (error) {
+    // Fallback to local chromium for development
+    console.log('Using local Chromium for development');
+    browserInstance = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+  }
+
+  return browserInstance;
+}
+
+/**
+ * Scrape visor.vin for car listings using headless browser
  */
 export async function scrapeVisorVin(carSearchTerms: string[]): Promise<Deal[]> {
+  const searchTerm = carSearchTerms[0];
+  const url = `https://visor.vin/search?q=${encodeURIComponent(searchTerm)}`;
+  let page: Page | null = null;
+
   try {
-    const deals: Deal[] = [];
-    const searchTerm = carSearchTerms[0].replace(/\s+/g, '+');
-    const url = `https://visor.vin/search?q=${encodeURIComponent(searchTerm)}`;
+    const browser = await getBrowser();
+    page = await browser.newPage();
 
-    // Fetch the page with browser-like headers to avoid being blocked
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0',
-      },
-      timeout: 10000,
+    // Set user agent to avoid detection
+    await page.setExtraHTTPHeaders({
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     });
 
-    const $ = cheerio.load(response.data);
+    // Navigate with timeout
+    await page.goto(url, {
+      waitUntil: 'networkidle',
+      timeout: 15000
+    });
 
-    // Parse visor.vin listings
-    // Visor.vin uses card-based layout for listings
-    $('a[href*="/listing/"]').each((i, element) => {
-      const $card = $(element);
-      const listingUrl = 'https://visor.vin' + $card.attr('href');
+    // Wait for content to load
+    await page.waitForTimeout(2000);
 
-      // Extract title
-      const title = $card.find('h3, h4, .title, [class*="title"]').first().text().trim() ||
-                    $card.find('div').first().text().trim();
+    // Extract listings data
+    const deals = await page.evaluate(() => {
+      const results: Array<{title: string; price: number; url: string; mileage?: string}> = [];
 
-      // Extract price - look for dollar signs
-      const priceText = $card.text().match(/\$[\d,]+/)?.[0] || '';
-      const price = priceText ? parseInt(priceText.replace(/[$,]/g, '')) : 0;
+      // Find all listing cards (adjust selectors based on actual visor.vin structure)
+      const listingSelectors = [
+        'a[href*="/listing/"]',
+        'a[href*="/vehicle/"]',
+        '[data-testid*="listing"]',
+        '.listing-card',
+        '[class*="listing"]',
+      ];
 
-      // Extract mileage if available
-      const mileageMatch = $card.text().match(/([\d,]+)\s*(?:miles|mi)/i);
-      const mileage = mileageMatch ? mileageMatch[1] : '';
+      let foundListings = false;
 
-      // Only add if we have valid data
-      if (title && listingUrl && price > 0) {
-        deals.push({
-          id: generateId(),
-          title: title,
-          price: price,
-          url: listingUrl,
-          source: 'Visor.vin',
-          inStock: true,
-          lastUpdated: new Date().toISOString(),
-          description: mileage ? `${mileage} miles` : undefined,
-        });
+      for (const selector of listingSelectors) {
+        const listings = document.querySelectorAll(selector);
+
+        if (listings.length > 0) {
+          foundListings = true;
+          listings.forEach((listing, index) => {
+            if (index >= 20) return; // Limit to 20 results
+
+            const linkElement = listing.closest('a') || listing.querySelector('a');
+            const url = linkElement?.getAttribute('href') || '';
+            const fullUrl = url.startsWith('http') ? url : `https://visor.vin${url}`;
+
+            // Extract title
+            const titleElement = listing.querySelector('h3, h4, h5, [class*="title"], [class*="name"]');
+            const title = titleElement?.textContent?.trim() || '';
+
+            // Extract price
+            const text = listing.textContent || '';
+            const priceMatch = text.match(/\$\s*([\d,]+)/);
+            const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : 0;
+
+            // Extract mileage
+            const mileageMatch = text.match(/([\d,]+)\s*(?:mi|miles|km)/i);
+            const mileage = mileageMatch ? mileageMatch[1] : undefined;
+
+            if (title && fullUrl) {
+              results.push({ title, price, url: fullUrl, mileage });
+            }
+          });
+
+          if (results.length > 0) break;
+        }
       }
+
+      return results;
     });
 
-    // If no results found via scraping, fallback to generating direct search links
-    if (deals.length === 0) {
-      console.log('No listings parsed from visor.vin, generating search link');
-      deals.push({
-        id: generateId(),
-        title: `View ${carSearchTerms[0]} listings on Visor.vin`,
-        price: 0,
-        url: url,
-        source: 'Visor.vin',
-        inStock: true,
-        lastUpdated: new Date().toISOString(),
-        description: 'Click to search on Visor.vin',
+    await page.close();
+
+    // Convert to Deal format
+    const formattedDeals: Deal[] = deals.map(deal => ({
+      id: generateId(),
+      title: deal.title.substring(0, 200),
+      price: deal.price,
+      url: deal.url,
+      source: 'Visor.vin',
+      inStock: true,
+      lastUpdated: new Date().toISOString(),
+      description: deal.mileage ? `${deal.mileage} miles` : undefined,
+    }));
+
+    if (formattedDeals.length > 0) {
+      console.log(`Successfully scraped ${formattedDeals.length} listings from visor.vin`);
+      return formattedDeals.sort((a, b) => {
+        if (a.price === 0 && b.price === 0) return 0;
+        if (a.price === 0) return 1;
+        if (b.price === 0) return -1;
+        return a.price - b.price;
       });
     }
 
-    return deals.sort((a, b) => a.price - b.price).slice(0, 20);
-  } catch (error) {
-    console.error('Error scraping visor.vin:', error);
-
-    // Fallback: return a direct search link
-    const searchTerm = carSearchTerms[0].replace(/\s+/g, '+');
-    const url = `https://visor.vin/search?q=${encodeURIComponent(searchTerm)}`;
-
+    // Fallback: return search link
     return [{
       id: generateId(),
-      title: `Search ${carSearchTerms[0]} on Visor.vin`,
+      title: `${searchTerm} on Visor.vin`,
       price: 0,
       url: url,
       source: 'Visor.vin',
       inStock: true,
       lastUpdated: new Date().toISOString(),
-      description: 'Click to view search results',
+      description: 'Search results from Visor.vin',
+    }];
+  } catch (error) {
+    console.error('Error scraping visor.vin:', error);
+    if (page) await page.close().catch(() => {});
+
+    // Fallback: return search link
+    return [{
+      id: generateId(),
+      title: `${searchTerm} on Visor.vin`,
+      price: 0,
+      url: url,
+      source: 'Visor.vin',
+      inStock: true,
+      lastUpdated: new Date().toISOString(),
+      description: 'Search results from Visor.vin',
     }];
   }
 }
 
 /**
- * Scrape parts retailers for specific parts
+ * Scrape a single retailer using headless browser
+ */
+async function scrapeRetailer(
+  retailer: { name: string; searchUrl: string; baseUrl: string },
+  query: string
+): Promise<Deal[]> {
+  let page: Page | null = null;
+
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+
+    await page.setExtraHTTPHeaders({
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    });
+
+    // Navigate to retailer
+    await page.goto(retailer.searchUrl, {
+      waitUntil: 'networkidle',
+      timeout: 10000,
+    });
+
+    // Wait for products to load
+    await page.waitForTimeout(1500);
+
+    // Extract product data
+    const products = await page.evaluate((baseUrl) => {
+      const results: Array<{title: string; price: number; url: string}> = [];
+
+      // Generic product selectors for e-commerce sites
+      const productSelectors = [
+        '.product-item',
+        '.product-card',
+        '.product',
+        '[data-product-id]',
+        '[class*="product"]',
+        '.item',
+        'article',
+      ];
+
+      for (const selector of productSelectors) {
+        const products = document.querySelectorAll(selector);
+
+        if (products.length > 0) {
+          products.forEach((product, index) => {
+            if (index >= 5) return; // Limit to 5 per retailer
+
+            // Find title
+            const titleEl = product.querySelector('h2, h3, h4, [class*="title"], [class*="name"]');
+            const title = titleEl?.textContent?.trim() || '';
+
+            // Find price
+            const priceEl = product.querySelector('[class*="price"], .price, [itemprop="price"]');
+            const priceText = priceEl?.textContent || '';
+            const priceMatch = priceText.match(/\$?([\d,]+\.?\d*)/);
+            const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
+
+            // Find link
+            const linkEl = product.querySelector('a');
+            let url = linkEl?.getAttribute('href') || '';
+            if (url && !url.startsWith('http')) {
+              url = url.startsWith('/') ? baseUrl + url : baseUrl + '/' + url;
+            }
+
+            if (title && price > 0 && url) {
+              results.push({ title, price, url });
+            }
+          });
+
+          if (results.length > 0) break;
+        }
+      }
+
+      return results;
+    }, retailer.baseUrl);
+
+    await page.close();
+
+    // Convert to Deal format
+    if (products.length > 0) {
+      return products.map(product => ({
+        id: generateId(),
+        title: product.title,
+        price: Math.round(product.price),
+        url: product.url,
+        source: retailer.name,
+        inStock: true,
+        lastUpdated: new Date().toISOString(),
+      }));
+    }
+
+    // Fallback: return search link
+    return [{
+      id: generateId(),
+      title: `Search "${query}" on ${retailer.name}`,
+      price: 0,
+      url: retailer.searchUrl,
+      source: retailer.name,
+      inStock: true,
+      lastUpdated: new Date().toISOString(),
+      description: 'Search results',
+    }];
+  } catch (error) {
+    console.error(`Error scraping ${retailer.name}:`, error);
+    if (page) await page.close().catch(() => {});
+
+    // Return search link on error
+    return [{
+      id: generateId(),
+      title: `Search "${query}" on ${retailer.name}`,
+      price: 0,
+      url: retailer.searchUrl,
+      source: retailer.name,
+      inStock: true,
+      lastUpdated: new Date().toISOString(),
+      description: 'Search results',
+    }];
+  }
+}
+
+/**
+ * Scrape parts retailers for specific parts using headless browser
  */
 export async function scrapePartsRetailers(
   searchTerms: string[],
   carContext?: string
 ): Promise<Deal[]> {
+  const query = carContext
+    ? `${carContext} ${searchTerms.join(' ')}`
+    : searchTerms.join(' ');
+
+  // Retailers to scrape
+  const retailers = [
+    {
+      name: 'Summit Racing',
+      searchUrl: `https://www.summitracing.com/search?keyword=${encodeURIComponent(query)}`,
+      baseUrl: 'https://www.summitracing.com',
+    },
+    {
+      name: 'CARiD',
+      searchUrl: `https://www.carid.com/search/${encodeURIComponent(query)}/`,
+      baseUrl: 'https://www.carid.com',
+    },
+    {
+      name: 'Vivid Racing',
+      searchUrl: `https://www.vividracing.com/search.php?search_query=${encodeURIComponent(query)}`,
+      baseUrl: 'https://www.vividracing.com',
+    },
+  ];
+
   try {
-    const deals: Deal[] = [];
-    const query = carContext
-      ? `${carContext} ${searchTerms.join(' ')}`
-      : searchTerms.join(' ');
-
-    // Retailers with their actual search URLs
-    const retailers = [
-      {
-        name: 'Summit Racing',
-        searchUrl: `https://www.summitracing.com/search?keyword=${encodeURIComponent(query)}`,
-        baseUrl: 'https://www.summitracing.com',
-      },
-      {
-        name: 'RockAuto',
-        searchUrl: `https://www.rockauto.com/en/catalog/${encodeURIComponent(query)}`,
-        baseUrl: 'https://www.rockauto.com',
-      },
-      {
-        name: 'CARiD',
-        searchUrl: `https://www.carid.com/search/${encodeURIComponent(query)}/`,
-        baseUrl: 'https://www.carid.com',
-      },
-      {
-        name: 'Vivid Racing',
-        searchUrl: `https://www.vividracing.com/search.php?search_query=${encodeURIComponent(query)}`,
-        baseUrl: 'https://www.vividracing.com',
-      },
-      {
-        name: 'ModBargains',
-        searchUrl: `https://www.modbargains.com/search?q=${encodeURIComponent(query)}`,
-        baseUrl: 'https://www.modbargains.com',
-      },
-      {
-        name: 'FCP Euro',
-        searchUrl: `https://www.fcpeuro.com/search?search_query=${encodeURIComponent(query)}`,
-        baseUrl: 'https://www.fcpeuro.com',
-      },
-    ];
-
-    // Try to scrape each retailer with a timeout
-    const scrapePromises = retailers.map(async (retailer) => {
-      try {
-        const response = await axios.get(retailer.searchUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-          },
-          timeout: 5000,
-          maxRedirects: 5,
-        });
-
-        const $ = cheerio.load(response.data);
-        const foundDeals: Deal[] = [];
-
-        // Generic selectors that work across most e-commerce sites
-        const productSelectors = [
-          '.product-item, .product-card, .product, [class*="product"]',
-          '.item, [class*="item-"]',
-          'article',
-        ];
-
-        for (const selector of productSelectors) {
-          $(selector).slice(0, 5).each((i, element) => {
-            const $item = $(element);
-
-            // Try to find product title
-            const title = $item.find('h2, h3, h4, .title, [class*="title"], [class*="name"]').first().text().trim() ||
-                          $item.find('a').first().attr('title') ||
-                          '';
-
-            // Try to find price
-            const priceText = $item.find('[class*="price"], .price, [itemprop="price"]').first().text();
-            const priceMatch = priceText?.match(/\$?([\d,]+\.?\d*)/);
-            const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
-
-            // Try to find product link
-            const productLink = $item.find('a').first().attr('href') || '';
-            const fullUrl = productLink.startsWith('http')
-              ? productLink
-              : productLink.startsWith('/')
-                ? retailer.baseUrl + productLink
-                : '';
-
-            if (title && price > 0 && fullUrl) {
-              foundDeals.push({
-                id: generateId(),
-                title: title,
-                price: Math.round(price),
-                url: fullUrl,
-                source: retailer.name,
-                inStock: true,
-                lastUpdated: new Date().toISOString(),
-              });
-            }
-          });
-
-          if (foundDeals.length > 0) break;
-        }
-
-        // If scraping didn't work, add a search link
-        if (foundDeals.length === 0) {
-          foundDeals.push({
+    // Scrape retailers in parallel with timeout
+    const scrapePromises = retailers.map(retailer =>
+      Promise.race([
+        scrapeRetailer(retailer, query),
+        new Promise<Deal[]>((resolve) =>
+          setTimeout(() => resolve([{
             id: generateId(),
             title: `Search "${query}" on ${retailer.name}`,
             price: 0,
@@ -219,33 +333,20 @@ export async function scrapePartsRetailers(
             source: retailer.name,
             inStock: true,
             lastUpdated: new Date().toISOString(),
-            description: 'Click to view search results',
-          });
-        }
+            description: 'Search results (timeout)',
+          }]), 12000)
+        ),
+      ])
+    );
 
-        return foundDeals;
-      } catch (error) {
-        // Return search link as fallback
-        return [{
-          id: generateId(),
-          title: `Search "${query}" on ${retailer.name}`,
-          price: 0,
-          url: retailer.searchUrl,
-          source: retailer.name,
-          inStock: true,
-          lastUpdated: new Date().toISOString(),
-          description: 'Click to view search results',
-        }];
-      }
-    });
-
-    // Wait for all scraping attempts
     const results = await Promise.all(scrapePromises);
+    const deals: Deal[] = [];
+
     results.forEach(retailerDeals => {
       deals.push(...retailerDeals);
     });
 
-    // Sort by price (but put $0 search links at the end)
+    // Sort by price (search links at end)
     return deals.sort((a, b) => {
       if (a.price === 0 && b.price === 0) return 0;
       if (a.price === 0) return 1;
@@ -254,131 +355,27 @@ export async function scrapePartsRetailers(
     });
   } catch (error) {
     console.error('Error scraping parts retailers:', error);
-    return [];
+
+    // Return search links as fallback
+    return retailers.map(retailer => ({
+      id: generateId(),
+      title: `Search "${query}" on ${retailer.name}`,
+      price: 0,
+      url: retailer.searchUrl,
+      source: retailer.name,
+      inStock: true,
+      lastUpdated: new Date().toISOString(),
+      description: 'Search results',
+    }));
   }
 }
 
 /**
- * Get realistic base prices for different part types
+ * Cleanup function to close browser
  */
-function getBasePriceForPartType(partType: string): number {
-  const priceMap: { [key: string]: number } = {
-    // Engine
-    'turbo': 2500,
-    'supercharger': 4500,
-    'cold air intake': 350,
-    'intake': 350,
-    'intercooler': 800,
-    'ecu': 650,
-    'tune': 650,
-    'injectors': 550,
-    'fuel pump': 250,
-
-    // Exhaust
-    'exhaust': 1200,
-    'cat back': 1200,
-    'turbo back': 1800,
-    'headers': 650,
-    'downpipe': 550,
-
-    // Suspension
-    'coilovers': 1400,
-    'coilover': 1400,
-    'springs': 280,
-    'sway bar': 320,
-    'strut': 180,
-
-    // Brakes
-    'brake kit': 1800,
-    'big brake': 2200,
-    'brake pads': 180,
-    'rotors': 320,
-
-    // Wheels
-    'wheels': 1600,
-    'rims': 1600,
-    'tires': 850,
-    'spacers': 120,
-
-    // Exterior
-    'body kit': 1200,
-    'spoiler': 450,
-    'wing': 550,
-    'hood': 850,
-
-    // Interior
-    'seats': 950,
-    'steering wheel': 380,
-    'shift knob': 85,
-
-    // Electronics
-    'gauges': 180,
-    'gauge': 180,
-    'blow off valve': 220,
-    'bov': 220,
-  };
-
-  for (const [key, price] of Object.entries(priceMap)) {
-    if (partType.includes(key)) {
-      return price;
-    }
+export async function closeBrowser() {
+  if (browserInstance) {
+    await browserInstance.close();
+    browserInstance = null;
   }
-
-  return 500; // Default price
-}
-
-/**
- * Get realistic brand names for part types
- */
-function getBrandNamesForPartType(partType: string): string[] {
-  const brandMap: { [key: string]: string[] } = {
-    turbo: ['Garrett', 'Precision', 'BorgWarner', 'Turbonetics'],
-    supercharger: ['Vortech', 'ProCharger', 'Magnuson', 'Edelbrock'],
-    intake: ['AEM', 'K&N', 'Injen', 'AFE'],
-    intercooler: ['Mishimoto', 'CSF', 'Garrett', 'PWR'],
-    exhaust: ['Borla', 'Magnaflow', 'Corsa', 'AWE Tuning'],
-    coilover: ['BC Racing', 'KW', 'Tein', 'Ohlins'],
-    brake: ['Brembo', 'StopTech', 'Wilwood', 'AP Racing'],
-    wheels: ['Enkei', 'Volk Racing', 'BBS', 'Rays'],
-    seats: ['Recaro', 'Sparco', 'Bride', 'Corbeau'],
-  };
-
-  for (const [key, brands] of Object.entries(brandMap)) {
-    if (partType.includes(key)) {
-      return brands;
-    }
-  }
-
-  return ['OEM', 'Performance', 'Pro', 'Sport'];
-}
-
-/**
- * Main scraper function that routes to appropriate scraper
- */
-export async function scrapeDeals(params: {
-  query?: string;
-  selectedCar?: string;
-  selectedMods?: string[];
-}): Promise<Deal[]> {
-  const { query, selectedCar, selectedMods } = params;
-
-  // If only car is selected, scrape visor.vin
-  if (selectedCar && (!selectedMods || selectedMods.length === 0) && !query) {
-    // Get car search terms from car ID
-    // This would need the car filter data, which we'll pass in
-    return [];
-  }
-
-  // If mods are selected (with or without car), scrape parts retailers
-  if (selectedMods && selectedMods.length > 0) {
-    // Get mod search terms and combine with car context
-    return [];
-  }
-
-  // If only search query, scrape parts retailers
-  if (query) {
-    return scrapePartsRetailers([query]);
-  }
-
-  return [];
 }
