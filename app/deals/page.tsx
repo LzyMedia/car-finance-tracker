@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, ExternalLink, TrendingDown, AlertCircle, Loader2, Filter, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Card, Button, Input } from '@/components/ui';
 import Navigation from '@/components/Navigation';
 import { Deal } from '@/types';
-import { POPULAR_CARS, POPULAR_MODS, MOD_CATEGORIES, CarFilter, ModFilter } from '@/lib/filters';
+import { POPULAR_CARS, POPULAR_MODS, MOD_CATEGORIES } from '@/lib/filters';
 
 export default function DealsPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,18 +16,30 @@ export default function DealsPage() {
   const [error, setError] = useState('');
   const [showFilters, setShowFilters] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['Engine', 'Exhaust', 'Suspension']);
+  const [hasSearched, setHasSearched] = useState(false);
 
-  const handleSearch = async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  // Auto-search when filters change (but not on initial mount)
+  useEffect(() => {
+    if (hasSearched && (selectedCar || selectedMods.length > 0 || searchQuery)) {
+      const timer = setTimeout(() => {
+        performSearch();
+      }, 300); // Debounce to avoid too many requests
 
+      return () => clearTimeout(timer);
+    }
+  }, [selectedCar, selectedMods, hasSearched]);
+
+  const performSearch = async () => {
     if (!searchQuery.trim() && !selectedCar && selectedMods.length === 0) {
       setError('Please enter a search term or select filters');
+      setDeals([]);
       return;
     }
 
     setLoading(true);
     setError('');
     setDeals([]);
+    setHasSearched(true);
 
     try {
       const response = await fetch('/api/scrape', {
@@ -60,6 +72,11 @@ export default function DealsPage() {
     }
   };
 
+  const handleSearch = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    performSearch();
+  };
+
   const toggleCategory = (category: string) => {
     setExpandedCategories(prev =>
       prev.includes(category)
@@ -68,12 +85,29 @@ export default function DealsPage() {
     );
   };
 
+  const handleCarSelect = (carId: string) => {
+    setSelectedCar(carId);
+    if (!hasSearched) {
+      setHasSearched(true);
+      // Trigger search immediately for first filter selection
+      setTimeout(() => performSearch(), 100);
+    }
+  };
+
   const toggleMod = (modId: string) => {
-    setSelectedMods(prev =>
-      prev.includes(modId)
+    setSelectedMods(prev => {
+      const newMods = prev.includes(modId)
         ? prev.filter(id => id !== modId)
-        : [...prev, modId]
-    );
+        : [...prev, modId];
+
+      if (!hasSearched) {
+        setHasSearched(true);
+        // Trigger search immediately for first filter selection
+        setTimeout(() => performSearch(), 100);
+      }
+
+      return newMods;
+    });
   };
 
   const clearFilters = () => {
@@ -82,6 +116,7 @@ export default function DealsPage() {
     setSearchQuery('');
     setDeals([]);
     setError('');
+    setHasSearched(false);
   };
 
   const getActiveFiltersCount = () => {
@@ -137,7 +172,7 @@ export default function DealsPage() {
                           type="radio"
                           name="car"
                           checked={selectedCar === car.id}
-                          onChange={() => setSelectedCar(car.id)}
+                          onChange={() => handleCarSelect(car.id)}
                           className="text-jdm-purple"
                         />
                         <div className="flex-1 min-w-0">
@@ -226,7 +261,13 @@ export default function DealsPage() {
                   <div className="flex items-center gap-2 bg-jdm-purple/20 border border-jdm-purple px-3 py-1 rounded-full">
                     <span className="text-sm text-foreground">{selectedCarData.name}</span>
                     <button
-                      onClick={() => setSelectedCar(null)}
+                      onClick={() => {
+                        setSelectedCar(null);
+                        if (selectedMods.length === 0 && !searchQuery) {
+                          setDeals([]);
+                          setError('');
+                        }
+                      }}
                       className="text-jdm-purple hover:text-jdm-pink"
                     >
                       <X className="w-3 h-3" />
@@ -289,6 +330,8 @@ export default function DealsPage() {
                         setSearchQuery(term);
                         setSelectedCar(null);
                         setSelectedMods([]);
+                        setHasSearched(true);
+                        setTimeout(() => performSearch(), 100);
                       }}
                       className="text-sm text-jdm-cyan hover:text-jdm-pink transition-colors"
                     >
@@ -327,9 +370,9 @@ export default function DealsPage() {
                 <Search className="w-16 h-16 text-muted mx-auto mb-4" />
                 <h3 className="text-2xl font-bold text-foreground mb-2">Find Your Next Upgrade</h3>
                 <p className="text-muted mb-6 max-w-2xl mx-auto">
-                  {selectedCarData && !selectedMods.length && !searchQuery
-                    ? `Select "${selectedCarData.name}" and click Search to find car listings on visor.vin`
-                    : 'Use filters to select your car and mods, or search for specific parts'}
+                  {hasSearched
+                    ? 'Try selecting different filters or refining your search'
+                    : 'Select filters or search to find deals on car parts and accessories'}
                 </p>
               </Card>
             )}
