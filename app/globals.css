@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+:root {
+  /* 90s JDM Color Palette - Inspired by Initial D, Street Racing, Vaporwave */
+  --jdm-purple: #9b4dff;
+  --jdm-pink: #ff3d9a;
+  --jdm-cyan: #00e5ff;
+  --jdm-orange: #ff6b35;
+  --jdm-yellow: #ffd93d;
+  --jdm-red: #ff2e63;
+
+  /* Dark theme colors */
+  --background: #0a0a0f;
+  --surface: #161620;
+  --surface-elevated: #1e1e2e;
+  --foreground: #e0e0e0;
+  --muted: #808080;
+
+  /* Gradient colors */
+  --gradient-start: var(--jdm-purple);
+  --gradient-end: var(--jdm-pink);
+
+  /* Neon glow colors */
+  --neon-purple: rgba(155, 77, 255, 0.5);
+  --neon-cyan: rgba(0, 229, 255, 0.5);
+  --neon-pink: rgba(255, 61, 154, 0.5);
+}
+
+@theme inline {
+  /* Colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-muted: var(--muted);
+
+  --color-jdm-purple: var(--jdm-purple);
+  --color-jdm-pink: var(--jdm-pink);
+  --color-jdm-cyan: var(--jdm-cyan);
+  --color-jdm-orange: var(--jdm-orange);
+  --color-jdm-yellow: var(--jdm-yellow);
+  --color-jdm-red: var(--jdm-red);
+
+  /* Fonts */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  --font-mono: 'Courier New', Courier, monospace;
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+}
+
+/* Base styles */
+* {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Grid background effect */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(155, 77, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(155, 77, 255, 0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* Neon glow effects */
+.neon-purple {
+  box-shadow: 0 0 10px var(--neon-purple), 0 0 20px var(--neon-purple);
+}
+
+.neon-cyan {
+  box-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+}
+
+.neon-pink {
+  box-shadow: 0 0 10px var(--neon-pink), 0 0 20px var(--neon-pink);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--jdm-purple), var(--jdm-pink));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Gradient border */
+.gradient-border {
+  border: 2px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image:
+    linear-gradient(var(--surface-elevated), var(--surface-elevated)),
+    linear-gradient(135deg, var(--jdm-purple), var(--jdm-pink));
+}
+
+/* Animated gradient background */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.gradient-animate {
+  background: linear-gradient(135deg, var(--jdm-purple), var(--jdm-pink), var(--jdm-cyan));
+  background-size: 200% 200%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+/* Racing stripes effect */
+.racing-stripes {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    rgba(255, 255, 255, 0.03) 10px,
+    rgba(255, 255, 255, 0.03) 20px
+  );
+}
+
+/* Card hover effects */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(155, 77, 255, 0.2);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--jdm-purple), var(--jdm-pink));
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--jdm-pink), var(--jdm-cyan));
+}
+
+/* Button animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px var(--neon-purple), 0 0 10px var(--neon-purple);
+  }
+  50% {
+    box-shadow: 0 0 10px var(--neon-purple), 0 0 20px var(--neon-purple), 0 0 30px var(--neon-purple);
+  }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Scan line effect for that retro CRT look */
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+.scan-lines::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  animation: scan 8s linear infinite;
+  pointer-events: none;
+}
