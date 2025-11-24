@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   /* 90s JDM Color Palette - Inspired by Initial D, Street Racing, Vaporwave */
@@ -24,22 +26,6 @@
   --neon-purple: rgba(155, 77, 255, 0.5);
   --neon-cyan: rgba(0, 229, 255, 0.5);
   --neon-pink: rgba(255, 61, 154, 0.5);
-}
-
-@theme inline {
-  /* Colors */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-muted: var(--muted);
-
-  --color-jdm-purple: var(--jdm-purple);
-  --color-jdm-pink: var(--jdm-pink);
-  --color-jdm-cyan: var(--jdm-cyan);
-  --color-jdm-orange: var(--jdm-orange);
-  --color-jdm-yellow: var(--jdm-yellow);
-  --color-jdm-red: var(--jdm-red);
 
   /* Fonts */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
