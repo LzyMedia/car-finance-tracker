@@ -3,14 +3,17 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Edit, Car, Wrench, Package } from 'lucide-react';
 import { Card, Button, Input, ProgressBar } from '@/components/ui';
-import { getSavingsGoals, saveSavingsGoal, deleteSavingsGoal, generateId } from '@/lib/storage';
+import { getSavingsGoals, saveSavingsGoal, deleteSavingsGoal, generateId, getTransactions } from '@/lib/storage';
 import { formatCurrency } from '@/lib/utils';
 import { SavingsGoal, GoalCategory } from '@/types';
+import { SavingsTimeline } from '@/components/SavingsTimeline';
+import { calculateSavingsTimeline } from '@/lib/timeline';
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null);
+  const [selectedGoalForTimeline, setSelectedGoalForTimeline] = useState<string | null>(null);
 
   useEffect(() => {
     loadGoals();
@@ -76,16 +79,40 @@ export default function GoalsPage() {
           <Button onClick={() => setShowForm(true)}>Get Started</Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {goals.map((goal) => (
-            <GoalCard
-              key={goal.id}
-              goal={goal}
-              onEdit={handleEditGoal}
-              onDelete={handleDeleteGoal}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {goals.map((goal) => (
+              <GoalCard
+                key={goal.id}
+                goal={goal}
+                onEdit={handleEditGoal}
+                onDelete={handleDeleteGoal}
+                onViewTimeline={(id) => setSelectedGoalForTimeline(id)}
+              />
+            ))}
+          </div>
+
+          {/* Timeline Modal */}
+          {selectedGoalForTimeline && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <SavingsTimeline
+                  projection={calculateSavingsTimeline(
+                    goals.find((g) => g.id === selectedGoalForTimeline)!,
+                    getTransactions()
+                  )}
+                />
+                <Button
+                  onClick={() => setSelectedGoalForTimeline(null)}
+                  variant="outline"
+                  className="w-full mt-4"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -227,9 +254,10 @@ interface GoalCardProps {
   goal: SavingsGoal;
   onEdit: (goal: SavingsGoal) => void;
   onDelete: (goalId: string) => void;
+  onViewTimeline: (goalId: string) => void;
 }
 
-function GoalCard({ goal, onEdit, onDelete }: GoalCardProps) {
+function GoalCard({ goal, onEdit, onDelete, onViewTimeline }: GoalCardProps) {
   const progress = (goal.currentAmount / goal.targetAmount) * 100;
 
   const categoryIcons = {
@@ -275,7 +303,7 @@ function GoalCard({ goal, onEdit, onDelete }: GoalCardProps) {
         className="mb-4"
       />
 
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between text-sm mb-4">
         <span className="text-muted">
           {progress.toFixed(0)}% Complete
         </span>
@@ -285,6 +313,15 @@ function GoalCard({ goal, onEdit, onDelete }: GoalCardProps) {
           </span>
         )}
       </div>
+
+      <Button
+        onClick={() => onViewTimeline(goal.id)}
+        variant="outline"
+        className="w-full"
+        size="sm"
+      >
+        View Timeline
+      </Button>
     </Card>
   );
 }

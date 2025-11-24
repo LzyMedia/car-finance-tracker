@@ -74,7 +74,61 @@ yarn dev
 pnpm dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
+4. Set up environment variables for Plaid (optional):
+```bash
+cp .env.local.example .env.local
+```
+
+Edit `.env.local` and add your Plaid credentials:
+```
+PLAID_CLIENT_ID=your_plaid_client_id
+PLAID_SECRET=your_plaid_secret_sandbox
+PLAID_ENV=sandbox
+NEXT_PUBLIC_PLAID_ENV=sandbox
+```
+
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
+
+## 🏦 Plaid Bank Integration Setup
+
+The app supports automatic transaction syncing through Plaid.
+
+### Getting Plaid API Keys
+
+1. Sign up for a free account at [https://dashboard.plaid.com/signup](https://dashboard.plaid.com/signup)
+2. Navigate to Team Settings → Keys
+3. Copy your `client_id` and `sandbox` secret
+4. Add them to your `.env.local` file
+
+### Using Sandbox Mode
+
+In sandbox mode, you can test with these credentials:
+- **Username**: `user_good`
+- **Password**: `pass_good`
+
+This allows you to test bank connections without linking real accounts.
+
+### Production Setup
+
+For production:
+1. Complete Plaid's application process
+2. Get production API keys
+3. Update environment variables:
+```
+PLAID_ENV=production
+NEXT_PUBLIC_PLAID_ENV=production
+PLAID_SECRET=your_production_secret
+```
+
+### Features
+
+Once configured, users can:
+- Connect their bank accounts securely
+- Automatically sync transactions (last 30 days)
+- Get accurate monthly income/expense calculations
+- View personalized savings timelines
+
+**Note**: Without Plaid, users can still manually add transactions.
 
 ## 📱 Pages & Features
 
@@ -84,6 +138,7 @@ pnpm dev
 - Quick navigation to main sections
 
 ### Dashboard (`/dashboard`)
+- Bank account connection with Plaid
 - Overview of total savings and active goals
 - Monthly income and expenses summary
 - Savings rate calculation
@@ -93,11 +148,14 @@ pnpm dev
 ### Goals (`/dashboard/goals`)
 - Create, edit, and delete savings goals
 - Progress tracking with visual indicators
+- Dynamic savings timeline with milestones
+- Estimated completion dates
 - Category-based filtering
 - Deadline management
 
 ### Transactions (`/dashboard/transactions`)
-- Add income, expense, and savings transactions
+- Automatic sync from connected bank accounts
+- Manual transaction entry
 - Filter by transaction type
 - View summary statistics
 - Delete transactions
@@ -116,10 +174,11 @@ pnpm dev
 
 ## 🛠️ Tech Stack
 
-- **Framework**: Next.js 15 (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript
-- **Styling**: Tailwind CSS 4.0
+- **Styling**: Tailwind CSS 3.4
 - **Icons**: Lucide React
+- **Banking**: Plaid API
 - **Data Storage**: LocalStorage (client-side)
 - **API**: Next.js Route Handlers
 

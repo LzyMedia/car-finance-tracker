@@ -7,6 +7,7 @@ import { Card, Button, ProgressBar } from '@/components/ui';
 import { getSavingsGoals, getTransactions } from '@/lib/storage';
 import { calculateDashboardStats, formatCurrency } from '@/lib/utils';
 import { DashboardStats, SavingsGoal, Transaction } from '@/types';
+import { BankSync } from '@/components/BankSync';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -44,6 +45,9 @@ export default function DashboardPage() {
           </Button>
         </Link>
       </div>
+
+      {/* Bank Sync */}
+      <BankSync />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
